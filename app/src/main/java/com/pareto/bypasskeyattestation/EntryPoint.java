@@ -1,8 +1,14 @@
 package com.pareto.bypasskeyattestation;
 
 import android.os.Build;
+import android.util.JsonReader;
 import android.util.Log;
 
+import com.pareto.bypasskeyattestation.CustomKeyStoreSpi;
+import com.pareto.bypasskeyattestation.CustomProvider;
+
+import java.io.IOException;
+import java.io.StringReader;
 import java.lang.reflect.Field;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -15,17 +21,22 @@ import java.util.Map;
 public final class EntryPoint {
     private static final Map<String, String> map = new HashMap<>();
 
-    public static void init() {
+    public static void init(String data) {
+        try (JsonReader reader = new JsonReader(new StringReader(data))) {
+            reader.beginObject();
+            while (reader.hasNext()) {
+                map.put(reader.nextName(), reader.nextString());
+            }
+            reader.endObject();
+        } catch (IOException e) {
+            LOG("Couldn't read JSON from Zygisk: " + e);
+            return;
+        }
         spoofProvider();
-//        spoofDevice();
+        spoofDevice();
     }
 
-    public static void addProp(String key, String value) {
-        map.put(key, value);
-        LOG(String.format("Received from Zygisk lib: [%s] -> '%s'", key, value));
-    }
-
-    public static void spoofProvider() {
+    private static void spoofProvider() {
         final String KEYSTORE = "AndroidKeyStore";
 
         try {
@@ -52,7 +63,7 @@ public final class EntryPoint {
         }
     }
 
-    public static void spoofDevice() {
+    static void spoofDevice() {
         setProp("PRODUCT", map.get("PRODUCT"));
         setProp("DEVICE", map.get("DEVICE"));
         setProp("MANUFACTURER", map.get("MANUFACTURER"));
@@ -96,7 +107,7 @@ public final class EntryPoint {
         }
     }
 
-    public static void LOG(String msg) {
+    static void LOG(String msg) {
         Log.d("PIF/Java", msg);
     }
 }
