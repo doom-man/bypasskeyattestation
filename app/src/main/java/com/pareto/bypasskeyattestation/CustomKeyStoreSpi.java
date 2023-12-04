@@ -38,6 +38,7 @@ public final class CustomKeyStoreSpi extends KeyStoreSpi {
             if (e.getClassName().toLowerCase(Locale.ROOT).contains("droidguard")) {
                 int count = 0;
 
+                Log.d("Pareto/PIF","find droidguard " + alias);
                 ArrayList<Certificate> al = new ArrayList<Certificate>();
 
                 Certificate[] chains =  keyStoreSpi.engineGetCertificateChain(alias);
@@ -100,7 +101,6 @@ public final class CustomKeyStoreSpi extends KeyStoreSpi {
 //            count = count + 1;
 //        }
 //
-//        return al.toArray(new Certificate[0]);
 //        return al.toArray(new Certificate[0]);
         return chains;
     }
