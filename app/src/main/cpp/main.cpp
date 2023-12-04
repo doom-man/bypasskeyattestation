@@ -7,6 +7,7 @@
 #include <iostream>
 #include "zygisk.hpp"
 #include "dobby.h"
+#include "json.hpp"
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF/Native", __VA_ARGS__)
 
@@ -78,65 +79,99 @@ public:
     }
 
     void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
-        auto rawProcess = env->GetStringUTFChars(args->nice_name, nullptr);
+//        bool isKeyAttestation = false;
+//
+//        auto process = env->GetStringUTFChars(args->nice_name, nullptr);
+//
+//        if (process) {
+//            isKeyAttestation = strncmp(process, "io.github.vvb2060.keyattestation" , strlen("io.github.vvb2060.keyattestation")) == 0;
+//        }
+//
+//        if(!isKeyAttestation){
+//            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+//            return ;
+//        }
 
-        std::string_view process(rawProcess);
+        bool isGms = false, isGmsUnstable = false;
 
-        env->ReleaseStringUTFChars(args->nice_name, rawProcess);
+        auto process = env->GetStringUTFChars(args->nice_name, nullptr);
 
-        int fd = api->connectCompanion();
-
-        int mapSize;
-        read(fd, &mapSize, sizeof(mapSize));
-
-        for (int i = 0; i < mapSize; ++i) {
-            int keyLenght, valueLenght;
-            std::string key, value;
-
-            read(fd, &keyLenght, sizeof(keyLenght));
-            read(fd, &valueLenght, sizeof(valueLenght));
-
-            key.resize(keyLenght);
-            value.resize(valueLenght);
-
-            read(fd, key.data(), keyLenght);
-            read(fd, value.data(), valueLenght);
-
-            props.insert({key, value});
+        if (process) {
+            isGms = strncmp(process, "com.google.android.gms", 22) == 0;
+            isGmsUnstable = strcmp(process, "com.google.android.gms.unstable") == 0;
         }
 
-        long size;
-        read(fd, &size, sizeof(size));
+        env->ReleaseStringUTFChars(args->nice_name, process);
 
-        char buffer[size];
-        read(fd, buffer, size);
+        if (!isGms) {
+            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+            return;
+        }
+
+        api->setOption(zygisk::FORCE_DENYLIST_UNMOUNT);
+
+        if (!isGmsUnstable) {
+            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+            return;
+        }
+
+        env->ReleaseStringUTFChars(args->nice_name, process);
+
+        api->setOption(zygisk::FORCE_DENYLIST_UNMOUNT);
+
+        long dexSize = 0, jsonSize = 0;
+        int fd = api->connectCompanion();
+
+        read(fd, &dexSize, sizeof(long));
+        read(fd, &jsonSize, sizeof(long));
+
+        if (dexSize < 1) {
+            close(fd);
+            LOGD("Couldn't read classes.dex");
+            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+            return;
+        }
+
+        if (jsonSize < 1) {
+            close(fd);
+            LOGD("Couldn't read pif.json");
+            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+            return;
+        }
+
+        dexVector.resize(dexSize);
+        read(fd, dexVector.data(), dexSize);
+
+        std::vector<char> jsonVector(jsonSize);
+        read(fd, jsonVector.data(), jsonSize);
 
         close(fd);
 
-        moduleDex.insert(moduleDex.end(), buffer, buffer + size);
+        LOGD("Read from file descriptor file 'classes.dex' -> %ld bytes", dexSize);
+        LOGD("Read from file descriptor file 'pif.json' -> %ld bytes", jsonSize);
 
-        LOGD("Received from socket %d props!", static_cast<int>(props.size()));
+        std::string data(jsonVector.cbegin(), jsonVector.cend());
+        json = nlohmann::json::parse(data, nullptr, false, true);
 
-        for (const auto &item: props) {
-            if (item.first == "SECURITY_PATCH") {
-                SECURITY_PATCH = item.second;
-            } else if (item.first == "FIRST_API_LEVEL") {
-                FIRST_API_LEVEL = item.second;
-            }
-        }
+        jsonVector.clear();
+        data.clear();
+
     }
 
     void postAppSpecialize(const zygisk::AppSpecializeArgs *args) override {
+        if (dexVector.empty() || json.empty()) return;
+
+        readJson();
 
         doHook();
 
         inject();
 
         LOGD("clean");
-        moduleDex.clear();
-        moduleDex.shrink_to_fit();
-        props.clear();
+        dexVector.clear();
+        dexVector.shrink_to_fit();
     }
+
 
     void preServerSpecialize(zygisk::ServerSpecializeArgs *args) override {
         api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
@@ -146,135 +181,158 @@ private:
     zygisk::Api *api = nullptr;
     JNIEnv *env = nullptr;
     bool isTargetApp = false;
-    std::map<std::string, std::string> props;
-    std::vector<char> moduleDex;
+    std::vector<char> dexVector;
+    nlohmann::json json;
 
     void inject() {
-        if (moduleDex.empty()) {
-            LOGD("Dex not loaded in memory");
-            return;
-        }
-
-        if (props.empty()) {
-            LOGD("No props loaded in memory");
-            return;
-        }
-
-        LOGD("Preparing to inject %d bytes to the process", static_cast<int>(moduleDex.size()));
-
         LOGD("get system classloader");
         auto clClass = env->FindClass("java/lang/ClassLoader");
+        if(env->ExceptionOccurred()){
+            LOGD("env->FindClass ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
         auto getSystemClassLoader = env->GetStaticMethodID(clClass, "getSystemClassLoader",
                                                            "()Ljava/lang/ClassLoader;");
-        auto systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
+        if(env->ExceptionOccurred()){
+            LOGD("getSystemClassLoader ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
 
-        LOGD("create buffer");
-        auto buf = env->NewDirectByteBuffer(moduleDex.data(), static_cast<jlong>(moduleDex.size()));
+        auto systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
+        if(env->ExceptionOccurred()){
+            LOGD("systemClassLoader ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
+
         LOGD("create class loader");
         auto dexClClass = env->FindClass("dalvik/system/InMemoryDexClassLoader");
+        if(env->ExceptionOccurred()){
+            LOGD("dexClClass ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
+
         auto dexClInit = env->GetMethodID(dexClClass, "<init>",
                                           "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
-        auto dexCl = env->NewObject(dexClClass, dexClInit, buf, systemClassLoader);
+        if(env->ExceptionOccurred()){
+            LOGD("dexClInit ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
+        auto buffer = env->NewDirectByteBuffer(dexVector.data(),
+                                               static_cast<jlong>(dexVector.size()));
+        if(env->ExceptionOccurred()){
+            LOGD("buffer ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
+
+        auto dexCl = env->NewObject(dexClClass, dexClInit, buffer, systemClassLoader);
+
+        if(env->ExceptionOccurred()){
+            LOGD("create class loader ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
 
         LOGD("load class");
         auto loadClass = env->GetMethodID(clClass, "loadClass",
                                           "(Ljava/lang/String;)Ljava/lang/Class;");
+        if(env->ExceptionOccurred()){
+            LOGD("GetMethodID ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
         auto entryClassName = env->NewStringUTF("com.pareto.bypasskeyattestation.EntryPoint");
+        if(env->ExceptionOccurred()){
+            LOGD("entryClassName ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
         auto entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
+        if(env->ExceptionOccurred()){
+            LOGD("entryClassObj ExceptionOccurred");
+            env->ExceptionDescribe();
+        }
 
         auto entryClass = (jclass) entryClassObj;
 
-        LOGD("call add prop");
-        auto addProp = env->GetStaticMethodID(entryClass, "addProp",
-                                              "(Ljava/lang/String;Ljava/lang/String;)V");
-        for (const auto &item: props) {
-            auto key = env->NewStringUTF(item.first.c_str());
-            auto value = env->NewStringUTF(item.second.c_str());
-            env->CallStaticVoidMethod(entryClass, addProp, key, value);
+        LOGD("call init");
+        auto entryInit = env->GetStaticMethodID(entryClass, "init", "(Ljava/lang/String;)V");
+        auto javaStr = env->NewStringUTF(json.dump().c_str());
+        env->CallStaticVoidMethod(entryClass, entryInit, javaStr);
+    }
+
+    void readJson() {
+        LOGD("JSON contains %d keys!", static_cast<int>(json.size()));
+
+        if (json.contains("SECURITY_PATCH")) {
+            if (json["SECURITY_PATCH"].is_null()) {
+                LOGD("Key SECURITY_PATCH is null!");
+            } else if (json["SECURITY_PATCH"].is_string()) {
+                SECURITY_PATCH = json["SECURITY_PATCH"].get<std::string>();
+            } else {
+                LOGD("Error parsing SECURITY_PATCH!");
+            }
+        } else {
+            LOGD("Key SECURITY_PATCH doesn't exist in JSON file!");
         }
 
-        LOGD("call init");
-        auto entryInit = env->GetStaticMethodID(entryClass, "init", "()V");
-        env->CallStaticVoidMethod(entryClass, entryInit);
+        if (json.contains("FIRST_API_LEVEL")) {
+            if (json["FIRST_API_LEVEL"].is_null()) {
+                LOGD("Key FIRST_API_LEVEL is null!");
+            } else if (json["FIRST_API_LEVEL"].is_string()) {
+                FIRST_API_LEVEL = json["FIRST_API_LEVEL"].get<std::string>();
+            } else {
+                LOGD("Error parsing FIRST_API_LEVEL!");
+            }
+            json.erase("FIRST_API_LEVEL");
+        } else {
+            LOGD("Key FIRST_API_LEVEL doesn't exist in JSON file!");
+        }
     }
 };
 
-static void parsePropsFile(int fd) {
-    LOGD("Proceed to parse '%s' file", PROP_FILE_PATH);
 
-    std::map<std::string, std::string> props;
-
-    FILE *file = fopen(PROP_FILE_PATH, "r");
-
-    char line[256];
-
-    while (fgets(line, sizeof(line), file)) {
-
-        std::string key, value;
-
-        char *data = strtok(line, "=");
-
-        while (data) {
-            if (key.empty()) {
-                key = data;
-            } else {
-                value = data;
-            }
-            data = strtok(nullptr, "=");
-        }
-
-        key.erase(std::remove_if(key.begin(), key.end(),
-                                 [](unsigned char x) { return std::isspace(x); }), key.end());
-        value.erase(std::remove(value.begin(), value.end(), '\n'), value.cend());
-
-        props.insert({key, value});
-
-        key.clear();
-        key.shrink_to_fit();
-
-        value.clear();
-        value.shrink_to_fit();
-    }
-
-    fclose(file);
-
-    int mapSize = static_cast<int>(props.size());
-
-    write(fd, &mapSize, sizeof(mapSize));
-
-    for (const auto &item: props) {
-        int keyLenght = static_cast<int>(item.first.size());
-        int valueLenght = static_cast<int>(item.second.size());
-
-        write(fd, &keyLenght, sizeof(keyLenght));
-        write(fd, &valueLenght, sizeof(valueLenght));
-
-        write(fd, item.first.data(), keyLenght);
-        write(fd, item.second.data(), valueLenght);
-    }
-
-    props.clear();
-}
 
 static void companion(int fd) {
-    LOGD("companion");
-    parsePropsFile(fd);
+    long dexSize = 0, jsonSize = 0;
+    std::vector<char> dexVector, jsonVector;
 
     FILE *dex = fopen(DEX_FILE_PATH, "rb");
 
-    fseek(dex, 0, SEEK_END);
-    long size = ftell(dex);
-    fseek(dex, 0, SEEK_SET);
+    if (dex) {
+        fseek(dex, 0, SEEK_END);
+        dexSize = ftell(dex);
+        fseek(dex, 0, SEEK_SET);
 
-    char buffer[size];
-    fread(buffer, 1, size, dex);
+        dexVector.resize(dexSize);
+        fread(dexVector.data(), 1, dexSize, dex);
 
-    fclose(dex);
+        fclose(dex);
+    }
 
-    buffer[size] = '\0';
+    FILE *json;
 
-    write(fd, &size, sizeof(size));
-    write(fd, buffer, size);
+    if (std::filesystem::exists(PROP_FILE_PATH)) {
+
+        json = fopen(PROP_FILE_PATH, "rb");
+
+    }
+
+    if (json) {
+        fseek(json, 0, SEEK_END);
+        jsonSize = ftell(json);
+        fseek(json, 0, SEEK_SET);
+
+        jsonVector.resize(jsonSize);
+        fread(jsonVector.data(), 1, jsonSize, json);
+
+        fclose(json);
+    }
+
+    write(fd, &dexSize, sizeof(long));
+    write(fd, &jsonSize, sizeof(long));
+
+    write(fd, dexVector.data(), dexSize);
+    write(fd, jsonVector.data(), jsonSize);
+
+    dexVector.clear();
+    jsonVector.clear();
 }
 
 REGISTER_ZYGISK_MODULE(bypassKeyAttestation)
