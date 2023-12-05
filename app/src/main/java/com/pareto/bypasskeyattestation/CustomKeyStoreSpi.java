@@ -34,75 +34,39 @@ public final class CustomKeyStoreSpi extends KeyStoreSpi {
     public Certificate[] engineGetCertificateChain(String alias) {
         Log.d("Pareto/PIF","engineGetCertificateChain " + alias);
         String rootPath = "/data/local/tmp/";
-        for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-            if (e.getClassName().toLowerCase(Locale.ROOT).contains("droidguard")) {
-                int count = 0;
 
-                Log.d("Pareto/PIF","find droidguard " + alias);
-                ArrayList<Certificate> al = new ArrayList<Certificate>();
+        Certificate[] chains =  keyStoreSpi.engineGetCertificateChain(alias);
+        int count = 0;
 
-                Certificate[] chains =  keyStoreSpi.engineGetCertificateChain(alias);
-                for(Certificate cert : chains){
+        ArrayList<Certificate> al = new ArrayList<Certificate>();
+        for(Certificate cert : chains){
 
-                    File file0 = new File(rootPath+String.valueOf(count)+".txt");
-                    try  {
+            File file0 = new File(rootPath+String.valueOf(count)+".txt");
+            try  {
 
-                        Log.d("Pareto/PIF","file0 " + file0.getAbsolutePath());
+                Log.d("Pareto/PIF","file0 " + file0.getAbsolutePath());
 
-                        try {
-                            CertificateFactory cf = CertificateFactory.getInstance("X.509");
-                            InputStream is = new FileInputStream(file0);
-                            Certificate certificate = cf.generateCertificate(is);
-                            al.add(certificate);
-                            Log.d("Pareto/PIF","add certificate " + file0.getAbsolutePath());
-                        } catch (CertificateException ee) {
-                            Log.e("Pareto/PIF","add certificate error" + ee.toString());
-                            throw new RuntimeException(ee);
-                        }
-
-                    } catch (IOException ee) {
-                        Log.e("Pareto/PIF","add certificate error" + ee.toString());
-                        ee.printStackTrace();
-                    }
-
-                    count = count + 1;
+                try {
+                    CertificateFactory cf = CertificateFactory.getInstance("X.509");
+                    InputStream is = new FileInputStream(file0);
+                    Certificate certificate = cf.generateCertificate(is);
+                    al.add(certificate);
+                    Log.d("Pareto/PIF","add certificate " + file0.getAbsolutePath());
+                } catch (CertificateException e) {
+                    Log.e("Pareto/PIF","add certificate error" + e.toString());
+                    throw new RuntimeException(e);
                 }
 
-                return al.toArray(new Certificate[0]);
+            } catch (IOException e) {
+                Log.e("Pareto/PIF","add certificate error" + e.toString());
+                e.printStackTrace();
             }
+
+            count = count + 1;
         }
-        Certificate[] chains =  keyStoreSpi.engineGetCertificateChain(alias);
-//        int count = 0;
-//
-//        ArrayList<Certificate> al = new ArrayList<Certificate>();
-//        for(Certificate cert : chains){
-//
-//            File file0 = new File(rootPath+String.valueOf(count)+".txt");
-//            try  {
-//
-//                Log.d("Pareto/PIF","file0 " + file0.getAbsolutePath());
-//
-//                try {
-//                    CertificateFactory cf = CertificateFactory.getInstance("X.509");
-//                    InputStream is = new FileInputStream(file0);
-//                    Certificate certificate = cf.generateCertificate(is);
-//                    al.add(certificate);
-//                    Log.d("Pareto/PIF","add certificate " + file0.getAbsolutePath());
-//                } catch (CertificateException e) {
-//                    Log.e("Pareto/PIF","add certificate error" + e.toString());
-//                    throw new RuntimeException(e);
-//                }
-//
-//            } catch (IOException e) {
-//                Log.e("Pareto/PIF","add certificate error" + e.toString());
-//                e.printStackTrace();
-//            }
-//
-//            count = count + 1;
-//        }
-//
-//        return al.toArray(new Certificate[0]);
-        return chains;
+
+        return al.toArray(new Certificate[0]);
+//        return chains;
     }
 
     @Override

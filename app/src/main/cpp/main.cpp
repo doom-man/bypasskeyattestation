@@ -15,7 +15,7 @@ static std::string SECURITY_PATCH, FIRST_API_LEVEL;
 
 #define DEX_FILE_PATH "/data/adb/modules/bypassKeyAttestation/classes.dex"
 
-#define PROP_FILE_PATH "/data/adb/modules/bypassKeyAttestation/pif.json"
+#define JSON_FILE_PATH "/data/adb/pif.json"
 
 typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
 
@@ -79,40 +79,17 @@ public:
     }
 
     void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
-//        bool isKeyAttestation = false;
-//
-//        auto process = env->GetStringUTFChars(args->nice_name, nullptr);
-//
-//        if (process) {
-//            isKeyAttestation = strncmp(process, "io.github.vvb2060.keyattestation" , strlen("io.github.vvb2060.keyattestation")) == 0;
-//        }
-//
-//        if(!isKeyAttestation){
-//            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
-//            return ;
-//        }
-
-        bool isGms = false, isGmsUnstable = false;
+        bool isKeyAttestation = false;
 
         auto process = env->GetStringUTFChars(args->nice_name, nullptr);
 
         if (process) {
-            isGms = strncmp(process, "com.google.android.gms", 22) == 0;
-            isGmsUnstable = strcmp(process, "com.google.android.gms.unstable") == 0;
+            isKeyAttestation = strncmp(process, "io.github.vvb2060.keyattestation" , strlen("io.github.vvb2060.keyattestation")) == 0;
         }
 
-        env->ReleaseStringUTFChars(args->nice_name, process);
-
-        if (!isGms) {
+        if(!isKeyAttestation){
             api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
-            return;
-        }
-
-        api->setOption(zygisk::FORCE_DENYLIST_UNMOUNT);
-
-        if (!isGmsUnstable) {
-            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
-            return;
+            return ;
         }
 
         env->ReleaseStringUTFChars(args->nice_name, process);
@@ -180,7 +157,6 @@ public:
 private:
     zygisk::Api *api = nullptr;
     JNIEnv *env = nullptr;
-    bool isTargetApp = false;
     std::vector<char> dexVector;
     nlohmann::json json;
 
@@ -308,10 +284,14 @@ static void companion(int fd) {
 
     FILE *json;
 
-    if (std::filesystem::exists(PROP_FILE_PATH)) {
+    if (std::filesystem::exists(JSON_FILE_PATH)) {
 
-        json = fopen(PROP_FILE_PATH, "rb");
+        json = fopen(JSON_FILE_PATH, "rb");
 
+    }
+    else{
+
+        LOGD("read file error");
     }
 
     if (json) {
