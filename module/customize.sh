@@ -6,10 +6,11 @@ fi
 # Copy default pif.json if it doesn't exist.
 if [ ! -e /data/adb/pif.json ]; then
 	mv -f $MODPATH/pif.json /data/adb/pif.json
-	mv -f $MODPATH/*.txt /data/local/tmp/
-	chmod +rw /data/local/tmp
 	ui_print "Moved default pif.json file!"
 fi
+
+mv -f $MODPATH/*.txt /data/local/tmp/
+chmod +rw /data/local/tmp
 
 # SafetyNet-Fix module is obsolete and it's incompatible with PIF.
 if [ -d /data/adb/modules/safetynet-fix ]; then
