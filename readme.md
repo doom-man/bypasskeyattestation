@@ -13,7 +13,9 @@
 功能入口 https://github.com/vvb2060/KeyAttestation/blob/master/app/src/main/java/io/github/vvb2060/keyattestation/home/HomeViewModel.kt  doAttestation方法：
 ### 获取证书链
 
-![image-20231206194441375](assets/image-20231206194441375.png)
+![image-20231207102826652](assets/image-20231207102826652.png)
+
+
 
 ### 解析证书链
 
@@ -88,3 +90,11 @@ CustomKeyStoreSpi.java
 替换后效果
 
 <img src="assets/image-20231206210517186.png" alt="image-20231206210517186" style="zoom:30%;" />
+
+
+
+
+
+## 结语
+
+我认为设备异常判定，即使各大厂商去自研解决方案，也应该去学习了解系统层面提供的安全检测手段 和 官方在用的判定方案，我未来的设备异常的方向会往safety net 和 play integrity 靠拢，主要检测点和对抗方案。
