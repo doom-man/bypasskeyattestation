@@ -1,5 +1,5 @@
 # bypassKeyAttestation 
-
+[TOC]
 ## Key Attestation 密钥认证
 
 官方文档介绍： https://source.android.com/docs/security/features/keystore/attestation，
@@ -19,7 +19,7 @@
 
 ![image-20231206194902623](assets/image-20231206194902623.png)
 
-### 对证书进行校验
+### 对证书链进行校验
 
 ![image-20231206204618107](assets/image-20231206204618107.png)
 
