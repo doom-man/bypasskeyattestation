@@ -79,20 +79,29 @@ public:
     }
 
     void preAppSpecialize(zygisk::AppSpecializeArgs *args) override {
-        bool isKeyAttestation = false;
 
         auto process = env->GetStringUTFChars(args->nice_name, nullptr);
+        LOGD("api->getFlags() %d , processName %s" , api->getFlags() , process);
+        env->ReleaseStringUTFChars(args->nice_name, process);
 
-        if (process) {
-            isKeyAttestation = strncmp(process, "io.github.vvb2060.keyattestation" , strlen("io.github.vvb2060.keyattestation")) == 0;
-        }
-
-        if(!isKeyAttestation){
+        if(api->getFlags() != zygisk::PROCESS_ON_DENYLIST){
             api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
             return ;
         }
+//        bool isKeyAttestation = false;
+//
+//        auto process = env->GetStringUTFChars(args->nice_name, nullptr);
+//
+//        if (process) {
+//            isKeyAttestation = strncmp(process, "io.github.vvb2060.keyattestation" , strlen("io.github.vvb2060.keyattestation")) == 0;
+//        }
+//
+//        if(!isKeyAttestation){
+//            api->setOption(zygisk::DLCLOSE_MODULE_LIBRARY);
+//            return ;
+//        }
 
-        env->ReleaseStringUTFChars(args->nice_name, process);
+//        env->ReleaseStringUTFChars(args->nice_name, process);
 
         api->setOption(zygisk::FORCE_DENYLIST_UNMOUNT);
 
