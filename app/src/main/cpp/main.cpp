@@ -140,7 +140,7 @@ public:
 
         readJson();
 
-        doHook();
+//        doHook();
 
         inject();
 
