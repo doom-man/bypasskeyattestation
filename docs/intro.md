@@ -15,7 +15,9 @@
 
 ![image-20231207102826652](assets/image-20231207102826652.png)
 
+生成Key时，通过setAttestationChallenge设置challenge，防止通过旧证书重放。
 
+![image-20231208191506535](assets/image-20231208191506535.png)
 
 ### 解析证书链
 
@@ -50,9 +52,11 @@ Verified boot state: Unverified
 Verified boot hash: nDqAWissOCsw+aWEm7cEcAkCvQngEE+ypQ75UWakxt4= (base64) 
 ```
 
+<img src="assets/image-20231208192355224.png" alt="image-20231208192355224" style="zoom:50%;" />
+
 ## 饶过手段
 
-思路比较简单，替换到整条证书链为一个正常设备的证书链即可：
+思路比较简单，获取到challenge后 ，通过challenge生成新的证书链去替换整条证书链：
 
 1. 可以通过hook java层代码
 2. 写一个magisk插件 https://github.com/doom-man/bypasskeyattestation
@@ -91,9 +95,7 @@ CustomKeyStoreSpi.java
 
 <img src="assets/image-20231206210517186.png" alt="image-20231206210517186" style="zoom:30%;" />
 
-
-
-
+但是这种情况 ，生成Key用的challenge和实际证书的challenge不同，仍会被检测出来。
 
 ## 结语
 

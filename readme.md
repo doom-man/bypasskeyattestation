@@ -9,6 +9,11 @@
 4. 重启手机
 
 
-如果遇到问题，关闭改其他所有模块.
+如果遇到问题，关闭改其他所有模块, 重启。
+
+## todo
+1. 尝试修复challenge
+2. 尝试饶过play integrity
+
 
 > https://bbs.kanxue.com/thread-279799.htm
