@@ -16,3 +16,9 @@
 
 
 > https://bbs.kanxue.com/thread-279799.htm
+
+
+该模块无用啦， 仅学习 需要修复的可以看看其他以下项目:
+> https://github.com/5ec1cff/TrickyStore
+> https://github.com/chiteroman/PlayIntegrityFix
+> https://github.com/chiteroman/BootloaderSpoofer
